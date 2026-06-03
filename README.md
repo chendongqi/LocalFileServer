@@ -95,14 +95,14 @@ curl "http://localhost:12000/api/list?path=Documents"
 #### 下载文件
 
 ```bash
-# 下载到当前目录，保留原文件名
-curl -O http://localhost:12000/api/download?path=Documents/report.pdf
+# 下载到当前目录，保留原文件名（-J 读取服务端 Content-Disposition 头）
+curl -OJ "http://localhost:12000/api/download?path=Documents/report.pdf"
 
 # 指定保存路径
 curl -o /tmp/report.pdf "http://localhost:12000/api/download?path=Documents/report.pdf"
 
 # 断点续传（-C - 自动检测已下载字节数）
-curl -C - -O "http://localhost:12000/api/download?path=Videos/movie.mp4"
+curl -C - -OJ "http://localhost:12000/api/download?path=Videos/movie.mp4"
 
 # wget 下载
 wget "http://localhost:12000/api/download?path=Documents/report.pdf"

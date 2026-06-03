@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文件服务器</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --border: #e0e0e0;
+  --primary: #1976d2;
+  --primary-hover: #1565c0;
+  --text: #212121;
+  --text-secondary: #757575;
+  --hover: #f0f4ff;
+  --danger: #d32f2f;
+  --success: #388e3c;
+  --radius: 6px;
+}
+
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+header { background: var(--primary); color: #fff; padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 4px rgba(0,0,0,.2); position: sticky; top: 0; z-index: 100; }
+header h1 { font-size: 18px; font-weight: 600; flex: 1; }
+header .server-info { font-size: 12px; opacity: .8; }
+
+.toolbar { padding: 12px 24px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+nav.breadcrumb { flex: 1; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+nav.breadcrumb a, nav.breadcrumb span { color: var(--primary); text-decoration: none; font-size: 14px; padding: 4px 6px; border-radius: var(--radius); }
+nav.breadcrumb a:hover { background: var(--hover); }
+nav.breadcrumb .sep { color: var(--text-secondary); padding: 0 2px; }
+nav.breadcrumb .current { color: var(--text); cursor: default; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; transition: background .15s; white-space: nowrap; }
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn.primary:hover { background: var(--primary-hover); }
+
+.container { padding: 0 24px 32px; }
+
+.file-list { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; }
+.file-list-header, .file-row { display: grid; grid-template-columns: 2fr 1fr 1fr 80px; align-items: center; padding: 10px 16px; gap: 8px; }
+.file-list-header { background: #fafafa; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; }
+.file-row { border-bottom: 1px solid var(--border); transition: background .1s; }
+.file-row:last-child { border-bottom: none; }
+.file-row:hover { background: var(--hover); }
+.file-name { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+.file-name a { color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-name a:hover { color: var(--primary); }
+.file-icon { width: 20px; height: 20px; flex-shrink: 0; }
+.file-size, .file-mtime { color: var(--text-secondary); font-size: 13px; }
+.file-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.icon-btn { background: none; border: none; cursor: pointer; padding: 4px; border-radius: 4px; color: var(--text-secondary); display: flex; align-items: center; }
+.icon-btn:hover { background: var(--border); color: var(--text); }
+
+.empty { text-align: center; padding: 48px 16px; color: var(--text-secondary); }
+.empty svg { opacity: .3; margin-bottom: 12px; }
+
+/* Upload zone */
+.upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--text-secondary); margin-bottom: 16px; transition: border-color .2s, background .2s; cursor: pointer; }
+.upload-zone.drag-over { border-color: var(--primary); background: var(--hover); }
+.upload-zone p { margin-top: 8px; font-size: 13px; }
+
+/* Progress */
+.progress-list { margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px; }
+.progress-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; }
+.progress-header { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; }
+.progress-bar-bg { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.progress-bar { height: 100%; background: var(--primary); border-radius: 3px; transition: width .2s; }
+.progress-item.done .progress-bar { background: var(--success); }
+.progress-item.error .progress-bar { background: var(--danger); }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: center; justify-content: center; z-index: 200; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border-radius: var(--radius); padding: 24px; width: 340px; box-shadow: 0 8px 32px rgba(0,0,0,.15); }
+.modal h3 { margin-bottom: 16px; font-size: 16px; }
+.modal input { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; outline: none; }
+.modal input:focus { border-color: var(--primary); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+.toast { position: fixed; bottom: 24px; right: 24px; background: #323232; color: #fff; padding: 10px 18px; border-radius: var(--radius); font-size: 13px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 300; max-width: 340px; }
+.toast.show { opacity: 1; }
+.toast.error { background: var(--danger); }
+
+@media (max-width: 600px) {
+  .file-list-header, .file-row { grid-template-columns: 1fr 80px; }
+  .file-size, .file-mtime { display: none; }
+  header h1 { font-size: 15px; }
+  .toolbar { padding: 10px 12px; }
+  .container { padding: 0 12px 24px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+  <h1>本地文件服务器</h1>
+  <span class="server-info" id="serverInfo"></span>
+</header>
+
+<div class="toolbar">
+  <nav class="breadcrumb" id="breadcrumb"></nav>
+  <button class="btn" onclick="showMkdirModal()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 8h-3v3h-2v-3h-3v-2h3V9h2v3h3v2z"/></svg>
+    新建文件夹
+  </button>
+  <label class="btn primary" style="cursor:pointer">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+    上传文件
+    <input type="file" id="fileInput" multiple style="display:none" onchange="handleFileInput(this)">
+  </label>
+</div>
+
+<div class="container">
+  <div class="upload-zone" id="uploadZone">
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>
+    <p>拖拽文件到此处上传，或点击上方按钮选择文件</p>
+  </div>
+  <div class="progress-list" id="progressList"></div>
+  <div class="file-list" id="fileList">
+    <div class="empty">加载中...</div>
+  </div>
+</div>
+
+<!-- mkdir modal -->
+<div class="modal-overlay" id="mkdirModal">
+  <div class="modal">
+    <h3>新建文件夹</h3>
+    <input type="text" id="mkdirInput" placeholder="文件夹名称" onkeydown="if(event.key==='Enter')confirmMkdir()">
+    <div class="modal-actions">
+      <button class="btn" onclick="closeMkdirModal()">取消</button>
+      <button class="btn primary" onclick="confirmMkdir()">创建</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let currentPath = '';
+
+function getPathFromHash() {
+  return decodeURIComponent(location.hash.replace(/^#\/?/, ''));
+}
+
+function setHash(path) {
+  location.hash = path ? encodeURIComponent(path) : '';
+}
+
+async function loadDir(path) {
+  currentPath = path || '';
+  const url = currentPath ? `${API}/api/list?path=${encodeURIComponent(currentPath)}` : `${API}/api/list`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) { showToast('加载失败: ' + res.status, true); return; }
+    const data = await res.json();
+    renderBreadcrumb(data.path, data.parent);
+    renderFileList(data);
+    document.getElementById('serverInfo').textContent = `${data.dirs.length} 目录 · ${data.files.length} 文件`;
+  } catch (e) {
+    showToast('网络错误: ' + e.message, true);
+  }
+}
+
+function renderBreadcrumb(path, parent) {
+  const bc = document.getElementById('breadcrumb');
+  bc.innerHTML = '';
+  const parts = path ? path.split('/') : [];
+  const rootLink = document.createElement('a');
+  rootLink.href = '#';
+  rootLink.textContent = '根目录';
+  rootLink.onclick = e => { e.preventDefault(); navigateTo(''); };
+  bc.appendChild(rootLink);
+  let acc = '';
+  parts.forEach((part, i) => {
+    acc += (acc ? '/' : '') + part;
+    const sep = document.createElement('span');
+    sep.className = 'sep'; sep.textContent = '/';
+    bc.appendChild(sep);
+    const capturedPath = acc;
+    if (i < parts.length - 1) {
+      const a = document.createElement('a');
+      a.href = '#'; a.textContent = part;
+      a.onclick = e => { e.preventDefault(); navigateTo(capturedPath); };
+      bc.appendChild(a);
+    } else {
+      const span = document.createElement('span');
+      span.className = 'current'; span.textContent = part;
+      bc.appendChild(span);
+    }
+  });
+}
+
+function renderFileList(data) {
+  const el = document.getElementById('fileList');
+  if (data.dirs.length === 0 && data.files.length === 0) {
+    el.innerHTML = '<div class="empty"><svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg><p>空文件夹</p></div>';
+    return;
+  }
+  let html = `<div class="file-list-header"><span>名称</span><span>大小</span><span>修改时间</span><span></span></div>`;
+
+  // back entry
+  if (data.parent !== null && data.parent !== undefined) {
+    html += `<div class="file-row">
+      <div class="file-name">
+        ${dirIcon()}
+        <a href="#" data-navpath="${esc(data.parent)}">..</a>
+      </div><span></span><span></span><span></span></div>`;
+  }
+
+  data.dirs.forEach(d => {
+    html += `<div class="file-row">
+      <div class="file-name">${dirIcon()}<a href="#" data-navpath="${esc(d.path)}">${esc(d.name)}</a></div>
+      <span class="file-size">—</span>
+      <span class="file-mtime">${fmtDate(d.mtime)}</span>
+      <span class="file-actions"></span>
+    </div>`;
+  });
+
+  data.files.forEach(f => {
+    html += `<div class="file-row">
+      <div class="file-name">${fileIcon(f.name)}<a href="${API}/api/download?path=${encodeURIComponent(f.path)}" title="${esc(f.name)}">${esc(f.name)}</a></div>
+      <span class="file-size">${esc(f.size_human)}</span>
+      <span class="file-mtime">${fmtDate(f.mtime)}</span>
+      <span class="file-actions">
+        <button class="icon-btn dl-btn" title="下载" data-path="${esc(f.path)}" data-name="${esc(f.name)}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        </button>
+      </span>
+    </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function navigateTo(path) {
+  setHash(path);
+  loadDir(path);
+}
+
+function downloadFile(path, name) {
+  const a = document.createElement('a');
+  a.href = `${API}/api/download?path=${encodeURIComponent(path)}`;
+  a.download = name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 100);
+}
+
+// Event delegation for file list clicks
+document.getElementById('fileList').addEventListener('click', e => {
+  const navLink = e.target.closest('a[data-navpath]');
+  if (navLink) { e.preventDefault(); navigateTo(navLink.dataset.navpath); return; }
+  const dlBtn = e.target.closest('.dl-btn');
+  if (dlBtn) { downloadFile(dlBtn.dataset.path, dlBtn.dataset.name); }
+});
+
+// Upload
+const uploadZone = document.getElementById('uploadZone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag-over');
+  uploadFiles(Array.from(e.dataTransfer.files));
+});
+uploadZone.addEventListener('click', () => document.getElementById('fileInput').click());
+
+function handleFileInput(input) {
+  uploadFiles(Array.from(input.files));
+  input.value = '';
+}
+
+function uploadFiles(files) {
+  files.forEach(f => uploadOne(f));
+}
+
+function uploadOne(file) {
+  const list = document.getElementById('progressList');
+  const id = 'prog_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+  const item = document.createElement('div');
+  item.className = 'progress-item';
+  item.id = id;
+  item.innerHTML = `<div class="progress-header"><span>${esc(file.name)}</span><span class="prog-pct">0%</span></div>
+    <div class="progress-bar-bg"><div class="progress-bar" style="width:0"></div></div>`;
+  list.prepend(item);
+
+  const fd = new FormData();
+  fd.append('file', file);
+  const url = currentPath
+    ? `${API}/api/upload?path=${encodeURIComponent(currentPath)}`
+    : `${API}/api/upload`;
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', url);
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      const pct = Math.round(e.loaded / e.total * 100);
+      item.querySelector('.prog-pct').textContent = pct + '%';
+      item.querySelector('.progress-bar').style.width = pct + '%';
+    }
+  };
+  xhr.onload = () => {
+    if (xhr.status === 200) {
+      item.classList.add('done');
+      item.querySelector('.prog-pct').textContent = '完成';
+      showToast('上传成功: ' + file.name);
+      loadDir(currentPath);
+      setTimeout(() => item.remove(), 3000);
+    } else {
+      item.classList.add('error');
+      try { item.querySelector('.prog-pct').textContent = JSON.parse(xhr.responseText).detail || '失败'; }
+      catch { item.querySelector('.prog-pct').textContent = '上传失败'; }
+    }
+  };
+  xhr.onerror = () => { item.classList.add('error'); item.querySelector('.prog-pct').textContent = '网络错误'; };
+  xhr.send(fd);
+}
+
+// mkdir modal
+function showMkdirModal() {
+  document.getElementById('mkdirModal').classList.add('open');
+  document.getElementById('mkdirInput').value = '';
+  setTimeout(() => document.getElementById('mkdirInput').focus(), 50);
+}
+function closeMkdirModal() { document.getElementById('mkdirModal').classList.remove('open'); }
+async function confirmMkdir() {
+  const name = document.getElementById('mkdirInput').value.trim();
+  if (!name) return;
+  const path = currentPath ? currentPath + '/' + name : name;
+  const res = await fetch(`${API}/api/mkdir?path=${encodeURIComponent(path)}`);
+  if (res.ok) { showToast('文件夹已创建'); loadDir(currentPath); closeMkdirModal(); }
+  else {
+    const d = await res.json().catch(() => ({}));
+    showToast(d.detail || '创建失败', true);
+  }
+}
+document.getElementById('mkdirModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeMkdirModal(); });
+
+// Toast
+let toastTimer;
+function showToast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = 'toast', 3000);
+}
+
+// Icons
+function dirIcon() {
+  return `<svg class="file-icon" viewBox="0 0 24 24" fill="#ffc107"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
+}
+function fileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const colors = { pdf:'#f44336', doc:'#1976d2', docx:'#1976d2', xls:'#388e3c', xlsx:'#388e3c',
+    ppt:'#e64a19', pptx:'#e64a19', zip:'#7b1fa2', rar:'#7b1fa2', gz:'#7b1fa2', tar:'#7b1fa2',
+    jpg:'#00897b', jpeg:'#00897b', png:'#00897b', gif:'#00897b', mp4:'#c62828', mp3:'#ad1457', py:'#1565c0', js:'#f9a825', ts:'#1976d2' };
+  const c = colors[ext] || '#757575';
+  return `<svg class="file-icon" viewBox="0 0 24 24" fill="${c}"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>`;
+}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtDate(iso) { return iso ? iso.replace('T',' ') : '—'; }
+
+// Init
+window.addEventListener('hashchange', () => loadDir(getPathFromHash()));
+loadDir(getPathFromHash());
+</script>
+</body>
+</html>

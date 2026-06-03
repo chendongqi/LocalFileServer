@@ -1,0 +1,17 @@
+[Unit]
+Description=Local File Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/ecarx/anaconda3/bin/python main.py
+WorkingDirectory=/mnt/hdd/Database/03_Projects/ProductivityTools/LocalFileServer
+EnvironmentFile=%h/.config/local-file-server.env
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

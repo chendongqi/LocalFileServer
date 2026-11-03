@@ -1,12 +1,23 @@
 import mimetypes
 import re
 from pathlib import Path
+from urllib.parse import quote
 
 import aiofiles
 from fastapi import Request
 from fastapi.responses import Response, StreamingResponse
 
 CHUNK_SIZE = 1024 * 1024  # 1MB
+
+
+def content_disposition(filename: str) -> str:
+    """HTTP 头只能是 latin-1,非 ASCII 文件名需用 RFC 6266 的 filename* 编码。"""
+    ascii_name = filename.encode("ascii", "replace").decode("ascii")
+    ascii_name = ascii_name.replace("?", "_").replace('"', "'")
+    return (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(filename, safe='')}"
+    )
 
 
 async def file_stream_response(path: Path, request: Request) -> Response:
@@ -39,7 +50,7 @@ async def file_stream_response(path: Path, request: Request) -> Response:
                 "Content-Range": f"bytes {start}-{end}/{file_size}",
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(length),
-                "Content-Disposition": f'attachment; filename="{path.name}"',
+                "Content-Disposition": content_disposition(path.name),
             }
             return StreamingResponse(
                 range_generator(), status_code=206, media_type=mime_type, headers=headers
@@ -53,7 +64,7 @@ async def file_stream_response(path: Path, request: Request) -> Response:
     headers = {
         "Accept-Ranges": "bytes",
         "Content-Length": str(file_size),
-        "Content-Disposition": f'attachment; filename="{path.name}"',
+        "Content-Disposition": content_disposition(path.name),
     }
     return StreamingResponse(
         full_generator(), status_code=200, media_type=mime_type, headers=headers
